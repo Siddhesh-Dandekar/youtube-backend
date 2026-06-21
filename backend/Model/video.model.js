@@ -7,12 +7,14 @@ const videoSchema = mongoose.Schema({
         required : true,
     },
     videoUrl: {
-        type: String, 
-        required : true
+        type: String,
+        required : true,
+        match: [/^https?:\/\//i, 'videoUrl must be a valid http(s) URL'],
     },
     thumbnailUrl: {
-        type: String, 
-        required : true
+        type: String,
+        required : true,
+        match: [/^https?:\/\//i, 'thumbnailUrl must be a valid http(s) URL'],
     },
     description:{
         type: String,
@@ -25,7 +27,7 @@ const videoSchema = mongoose.Schema({
     },
     userId:{
         type: String,
-        requied : true,
+        required: true,
     },
     views:{
         type : Number,

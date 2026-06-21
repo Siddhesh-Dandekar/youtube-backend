@@ -3,258 +3,301 @@ import videoModel from "../Model/video.model.js";
 import channelModel from "../Model/channel.model.js";
 import mongoose from "mongoose";
 
-//This function is used to store new Video Details
+const isValidId = (id) => typeof id === 'string' && mongoose.Types.ObjectId.isValid(id);
+const serverError = (res, label, err) => {
+    console.error(`${label} error:`, err);
+    return res.status(500).json({ error: true, message: 'Server error' });
+};
+
 export async function uploadvideo(req, res) {
-    const { title, thumbnailUrl, description, videoUrl } = req.body;
-    const { _id } = req.user;
     try {
-        const UserDetails = await userModel.findById(_id);
-        if (!UserDetails.channelId) {
-            throw new Error('Channel Not Created');
+        const title = String(req.body.title || '').trim();
+        const thumbnailUrl = String(req.body.thumbnailUrl || '').trim();
+        const videoUrl = String(req.body.videoUrl || '').trim();
+        const description = String(req.body.description || '').trim();
+        const { _id } = req.user;
+
+        if (!title || !thumbnailUrl || !videoUrl || !description) {
+            return res.status(400).json({ error: true, message: 'All fields are required' });
         }
+
+        const UserDetails = await userModel.findById(_id);
+        if (!UserDetails || !UserDetails.channelId) {
+            return res.status(400).json({ error: true, message: 'Channel Not Created' });
+        }
+
         const newVideo = new videoModel({
-            title: title,
-            thumbnailUrl: thumbnailUrl,
-            videoUrl: videoUrl,
-            userId: _id,
-            description: description,
-            channelId: UserDetails.channelId
-        })
+            title,
+            thumbnailUrl,
+            videoUrl,
+            userId: _id.toString(),
+            description,
+            channelId: UserDetails.channelId,
+        });
 
         const savedVideo = await newVideo.save();
         const channel = await channelModel.findById(UserDetails.channelId);
         channel.videos.push(savedVideo._id);
-        channel.save();
-        return res.send(savedVideo)
-
-    }
-    catch (err) {
-        return res.json({ message: err.message })
+        await channel.save();
+        return res.status(201).json(savedVideo);
+    } catch (err) {
+        return serverError(res, 'uploadvideo', err);
     }
 }
 
-//This function is used to Retrieve all Videos
 export async function fetchVideos(req, res) {
     try {
         const videos = await videoModel.find().sort({ uploadDate: -1 });
-        return res.send(videos);
-    }
-    catch (err) {
-        return res.json({ message: err.message })
+        return res.status(200).json(videos);
+    } catch (err) {
+        return serverError(res, 'fetchVideos', err);
     }
 }
 
-//This function is used to Retrieve Video by his Id
 export async function fetchVideoById(req, res) {
     const { id } = req.params;
-    
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-        return res.status(400).json({ message: 'Invalid Video ID format' });
+    if (!isValidId(id)) {
+        return res.status(400).json({ error: true, message: 'Invalid Video ID' });
     }
-
     try {
         const videoData = await videoModel.findById(id);
         if (!videoData) {
-            return res.status(404).json({ message: 'Video not found' });
+            return res.status(404).json({ error: true, message: 'Video not found' });
         }
         return res.status(200).json(videoData);
     } catch (err) {
-        return res.status(500).json({ message: err.message });
+        return serverError(res, 'fetchVideoById', err);
     }
 }
 
-//This function increament video views
 export async function addViews(req, res) {
     const { videoid } = req.params;
+    if (!isValidId(videoid)) {
+        return res.status(400).json({ error: true, message: 'Invalid Video ID' });
+    }
     try {
-        const video = await videoModel.findById(videoid);
+        const video = await videoModel.findByIdAndUpdate(
+            videoid,
+            { $inc: { views: 1 } },
+            { new: true, projection: { views: 1 } }
+        );
         if (!video) {
-            return res.status(404).send({ error: 'Video not found' });
+            return res.status(404).json({ error: true, message: 'Video not found' });
         }
-        video.views += 1;
-        await video.save();
-
-        return res.status(200).send({ views: video.views });
+        return res.status(200).json({ views: video.views });
     } catch (err) {
-        return res.status(500).send({ error: 'An error occurred while updating the views', details: err.message });
+        return serverError(res, 'addViews', err);
     }
 }
 
-//This function add likes but we user has already liked it will Remove his like
 export async function addLikes(req, res) {
     const { videoid } = req.params;
     const { _id } = req.user;
+    if (!isValidId(videoid)) {
+        return res.status(400).json({ error: true, message: 'Invalid Video ID' });
+    }
     try {
         const video = await videoModel.findById(videoid);
         const user = await userModel.findById(_id);
         if (!video) {
-            return res.status(404).send({ error: 'Video not found' });
+            return res.status(404).json({ error: true, message: 'Video not found' });
         }
-        const AlreadyLiked = user.likedVideos.find(x => x == video._id);
-        const AlreadyDisLiked = user.dislikedVideos.find(x => x == video._id);
-        if(AlreadyDisLiked){
-            video.dislikes -= 1;
-            const filteredDisLiked = user.dislikedVideos.filter( x => x!== videoid);
-            user.dislikedVideos = filteredDisLiked;
-            await video.save();
-            await user.save();
+        const alreadyLiked = user.likedVideos.some(x => x.toString() === videoid);
+        const alreadyDisliked = user.dislikedVideos.some(x => x.toString() === videoid);
+        if (alreadyDisliked) {
+            video.dislikes = Math.max(0, video.dislikes - 1);
+            user.dislikedVideos = user.dislikedVideos.filter(x => x.toString() !== videoid);
         }
-        if (AlreadyLiked) {
-            video.likes -= 1;
-            const filteredLiked = user.likedVideos.filter(x => x !== videoid);
-            user.likedVideos = filteredLiked;
-            await video.save();
-            await user.save();
-            return res.status(200).send({ likes : video.likes, dislikes: video.dislikes })
+        if (alreadyLiked) {
+            video.likes = Math.max(0, video.likes - 1);
+            user.likedVideos = user.likedVideos.filter(x => x.toString() !== videoid);
+        } else {
+            video.likes += 1;
+            user.likedVideos.push(videoid);
         }
-        
-        video.likes += 1;
-        user.likedVideos.push(videoid);
         await video.save();
         await user.save();
-
-        return res.status(200).send({likes : video.likes, dislikes: video.dislikes});
+        return res.status(200).json({ likes: video.likes, dislikes: video.dislikes });
     } catch (err) {
-        return res.status(500).send({ error: 'An error occurred while updating the views', details: err.message });
+        return serverError(res, 'addLikes', err);
     }
 }
 
-//This function add dislikes but it also check weather user has already liked or disliked video
 export async function addDislikes(req, res) {
     const { videoid } = req.params;
     const { _id } = req.user;
+    if (!isValidId(videoid)) {
+        return res.status(400).json({ error: true, message: 'Invalid Video ID' });
+    }
     try {
         const video = await videoModel.findById(videoid);
         const user = await userModel.findById(_id);
         if (!video) {
-            return res.status(404).send({ error: 'Video not found' });
+            return res.status(404).json({ error: true, message: 'Video not found' });
         }
-        const AlreadyLiked = user.likedVideos.find(x => x == video._id);
-        const AlreadyDisLiked = user.dislikedVideos.find(x => x == video._id);
-        if (AlreadyLiked) {
-            video.likes -= 1;
-            const filteredLiked = user.likedVideos.filter(x => x !== videoid);
-            user.likedVideos = filteredLiked;
-            await video.save();
-            await user.save();
+        const alreadyLiked = user.likedVideos.some(x => x.toString() === videoid);
+        const alreadyDisliked = user.dislikedVideos.some(x => x.toString() === videoid);
+        if (alreadyLiked) {
+            video.likes = Math.max(0, video.likes - 1);
+            user.likedVideos = user.likedVideos.filter(x => x.toString() !== videoid);
         }
-        if (AlreadyDisLiked) {
-            video.dislikes -= 1;
-            const filteredDisLiked = user.dislikedVideos.filter(x => x !== videoid);
-            user.dislikedVideos = filteredDisLiked;
-            await video.save();
-            await user.save();
-            return res.status(200).send({ likes : video.likes, dislikes: video.dislikes})
+        if (alreadyDisliked) {
+            video.dislikes = Math.max(0, video.dislikes - 1);
+            user.dislikedVideos = user.dislikedVideos.filter(x => x.toString() !== videoid);
+        } else {
+            video.dislikes += 1;
+            user.dislikedVideos.push(videoid);
         }
-        video.dislikes += 1;
-        user.dislikedVideos.push(videoid);
         await video.save();
         await user.save();
-
-        return res.status(200).send({likes : video.likes, dislikes: video.dislikes});
+        return res.status(200).json({ likes: video.likes, dislikes: video.dislikes });
     } catch (err) {
-        return res.status(500).send({ error: 'An error occurred while updating the views', details: err.message });
+        return serverError(res, 'addDislikes', err);
     }
 }
 
-//This function Add Comments
-export async function AddComment(req, res){
-    const { text , videoid } = req.body;
-    const { channelId } = req.user;
-    try{
-        const VideoData = await videoModel.findById(videoid);
-        const newComment = {
-            channelId : channelId,
-            text : text
+export async function AddComment(req, res) {
+    try {
+        const text = String(req.body.text || '').trim();
+        const videoid = String(req.body.videoid || '');
+        const { channelId } = req.user;
+
+        if (!text || text.length > 1000) {
+            return res.status(400).json({ error: true, message: 'Comment must be 1-1000 characters' });
         }
-        VideoData.comments.unshift(newComment);
+        if (!isValidId(videoid)) {
+            return res.status(400).json({ error: true, message: 'Invalid Video ID' });
+        }
+        if (!channelId) {
+            return res.status(400).json({ error: true, message: 'You must have a channel to comment' });
+        }
+
+        const VideoData = await videoModel.findById(videoid);
+        if (!VideoData) {
+            return res.status(404).json({ error: true, message: 'Video not found' });
+        }
+        VideoData.comments.unshift({ channelId: channelId.toString(), text });
         await VideoData.save();
-        return res.send(VideoData.comments)
-    }
-    catch(err){
-        return res.json({message : err.message});
+        return res.status(201).json(VideoData.comments);
+    } catch (err) {
+        return serverError(res, 'AddComment', err);
     }
 }
 
-//This function Delete Comments
-export async function DeleteComment(req, res){
-    const { commentId , videoid} = req.body;
-    const { channelId } = req.user;
-    try{
-        const VideoData = await videoModel.findById(videoid);
-        const CommentInfo = VideoData.comments.find(x => x._id == commentId);
-        if(!CommentInfo || CommentInfo.channelId !== channelId.toString()){
-            throw new Error('Comment Not Found / Your are Not allowed to Delete');
+export async function DeleteComment(req, res) {
+    try {
+        const commentId = String(req.body.commentId || '');
+        const videoid = String(req.body.videoid || '');
+        const { channelId } = req.user;
+
+        if (!isValidId(commentId) || !isValidId(videoid)) {
+            return res.status(400).json({ error: true, message: 'Invalid IDs' });
         }
-        const filteredComment =  VideoData.comments.filter(x => x._id.toString() !== commentId);
-        VideoData.comments = filteredComment;
+        if (!channelId) {
+            return res.status(403).json({ error: true, message: 'Not allowed' });
+        }
+
+        const VideoData = await videoModel.findById(videoid);
+        if (!VideoData) {
+            return res.status(404).json({ error: true, message: 'Video not found' });
+        }
+        const CommentInfo = VideoData.comments.find(x => x._id.toString() === commentId);
+        if (!CommentInfo || CommentInfo.channelId !== channelId.toString()) {
+            return res.status(403).json({ error: true, message: 'Not allowed to delete this comment' });
+        }
+        VideoData.comments = VideoData.comments.filter(x => x._id.toString() !== commentId);
         await VideoData.save();
-        return res.send(VideoData.comments);
-    }
-    catch(err){
-        return res.json({message : err.message})
+        return res.status(200).json(VideoData.comments);
+    } catch (err) {
+        return serverError(res, 'DeleteComment', err);
     }
 }
 
-//This function allows to Edit Comments
-export async function EditComment(req, res){
-    const { commentId , videoid , Updatetext } =req.body;
-    const { channelId } = req.user;
-    try{
-        const VideoData = await videoModel.findById(videoid);
-        const CommentInfo = VideoData.comments.find(x => x._id == commentId);
-        if(!CommentInfo || CommentInfo.channelId !== channelId.toString()){
-            throw new Error('Comment Not Found / Your are Not allowed to Delete');
+export async function EditComment(req, res) {
+    try {
+        const commentId = String(req.body.commentId || '');
+        const videoid = String(req.body.videoid || '');
+        const Updatetext = String(req.body.Updatetext || '').trim();
+        const { channelId } = req.user;
+
+        if (!isValidId(commentId) || !isValidId(videoid)) {
+            return res.status(400).json({ error: true, message: 'Invalid IDs' });
         }
-        if(CommentInfo.text == Updatetext){
-            return res.json({message : 'No changes Required'});
+        if (!Updatetext || Updatetext.length > 1000) {
+            return res.status(400).json({ error: true, message: 'Comment must be 1-1000 characters' });
+        }
+        if (!channelId) {
+            return res.status(403).json({ error: true, message: 'Not allowed' });
+        }
+
+        const VideoData = await videoModel.findById(videoid);
+        if (!VideoData) {
+            return res.status(404).json({ error: true, message: 'Video not found' });
+        }
+        const CommentInfo = VideoData.comments.find(x => x._id.toString() === commentId);
+        if (!CommentInfo || CommentInfo.channelId !== channelId.toString()) {
+            return res.status(403).json({ error: true, message: 'Not allowed to edit this comment' });
+        }
+        if (CommentInfo.text === Updatetext) {
+            return res.status(200).json({ message: 'No changes' });
         }
         CommentInfo.text = Updatetext;
-        await VideoData.save()
-        return res.json({text : Updatetext})
-
-    }catch(err){
-        return res.json({message : err.message})
+        await VideoData.save();
+        return res.status(200).json({ text: Updatetext });
+    } catch (err) {
+        return serverError(res, 'EditComment', err);
     }
-
 }
 
-//This function Delete Stored Video
-export async function DeleteVideo(req, res){
-    const { videoid , channelid } = req.body;
-    const { _id } = req.user;
-    try{        
+export async function DeleteVideo(req, res) {
+    try {
+        const videoid = String(req.body.videoid || '');
+        const channelid = String(req.body.channelid || '');
+        const { _id } = req.user;
+        const userIdStr = _id.toString();
+
+        if (!isValidId(videoid) || !isValidId(channelid)) {
+            return res.status(400).json({ error: true, message: 'Invalid IDs' });
+        }
+
         const VideoInfo = await videoModel.findById(videoid);
         const ChannelInfo = await channelModel.findById(channelid);
-        if(!VideoInfo || !ChannelInfo || ((ChannelInfo.userId.toString() && VideoInfo.userId) !== _id.toString() )){
-            throw new Error("You Are not allowed to delete")
-        }else{
-            const filteredVideos = ChannelInfo.videos.filter(x => x.toString() !== videoid.toString());
-            ChannelInfo.videos = filteredVideos;
-            await ChannelInfo.save();
-            await videoModel.findByIdAndDelete(videoid);
-            return res.json({message : ChannelInfo.videos});
+        if (!VideoInfo || !ChannelInfo) {
+            return res.status(404).json({ error: true, message: 'Video or channel not found' });
         }
-    }catch(err){
-        return res.json({message : err.message})
+        if (ChannelInfo.userId.toString() !== userIdStr || VideoInfo.userId !== userIdStr) {
+            return res.status(403).json({ error: true, message: 'You are not allowed to delete' });
+        }
+        ChannelInfo.videos = ChannelInfo.videos.filter(x => x.toString() !== videoid);
+        await ChannelInfo.save();
+        await videoModel.findByIdAndDelete(videoid);
+        return res.status(200).json({ videos: ChannelInfo.videos });
+    } catch (err) {
+        return serverError(res, 'DeleteVideo', err);
     }
 }
 
-//This function Edit Existing Video
-export async function EditVideo(req, res){
-    const { videoid, title, thumbnailUrl, description } = req.body;
-    const { _id } = req.user;
-    try{
-        const VideoInfo = await videoModel.findById(videoid);
-        if(!VideoInfo || VideoInfo.userId !== _id.toString()){
-            throw new Error('Video Not Found / Your are not Allowed to Edit')
+export async function EditVideo(req, res) {
+    try {
+        const videoid = String(req.body.videoid || '');
+        const { _id } = req.user;
+        const userIdStr = _id.toString();
+
+        if (!isValidId(videoid)) {
+            return res.status(400).json({ error: true, message: 'Invalid Video ID' });
         }
-        VideoInfo.title = title;
-        VideoInfo.thumbnailUrl = thumbnailUrl;
-        VideoInfo.description = description;
+
+        const VideoInfo = await videoModel.findById(videoid);
+        if (!VideoInfo || VideoInfo.userId !== userIdStr) {
+            return res.status(403).json({ error: true, message: 'Not allowed to edit' });
+        }
+
+        if (typeof req.body.title === 'string') VideoInfo.title = req.body.title.trim();
+        if (typeof req.body.thumbnailUrl === 'string') VideoInfo.thumbnailUrl = req.body.thumbnailUrl.trim();
+        if (typeof req.body.description === 'string') VideoInfo.description = req.body.description.trim();
         await VideoInfo.save();
-        return res.send(VideoInfo);
-    }catch(err){
-        return res.json({message : err.message})
+        return res.status(200).json(VideoInfo);
+    } catch (err) {
+        return serverError(res, 'EditVideo', err);
     }
 }

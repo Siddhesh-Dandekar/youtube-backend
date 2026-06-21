@@ -1,29 +1,37 @@
 import userModel from "../Model/user.model.js";
-import jwt from 'jsonwebtoken'
+import mongoose from "mongoose";
+import jwt from 'jsonwebtoken';
 
-
-//All protected Routes will go throw this Middleware on Each request to Ensure Valid Access
-function VerifyToken(req, res, next){
-    console.log(req.headers)
-    if(req.headers && req.headers.authorization && req.headers.authorization.split(" ")[0] == "JWT"){
-        jwt.verify(req.headers.authorization.split(" ")[1], "Secretkey",function(err, verifiedtoken){
-            if(err){
-                return res.status(400).send(err)
-            }
-            if(verifiedtoken){
-                userModel.findOne({email : verifiedtoken.email}).then(data => {
-                    if(!data){
-                        return res.status(400).send('Something went wrong')
-                    }
-                    req.user = data;
-                    next();
-                }).catch(err => { return res.status(500).send(err); });
-            }
-        })
+function VerifyToken(req, res, next) {
+    const authHeader = req.headers.authorization;
+    if (!authHeader) {
+        return res.status(401).json({ error: true, message: 'Access Denied' });
     }
-    else{
-        return res.status(400).json({error: true, message: "Access Denied"})
+    const parts = authHeader.split(' ');
+    if (parts.length !== 2 || parts[0] !== 'JWT') {
+        return res.status(401).json({ error: true, message: 'Access Denied' });
     }
+    jwt.verify(parts[1], process.env.JWT_SECRET, function(err, verifiedtoken) {
+        if (err || !verifiedtoken) {
+            return res.status(401).json({ error: true, message: 'Invalid or expired token' });
+        }
+        const userId = String(verifiedtoken.userId || '');
+        if (!mongoose.Types.ObjectId.isValid(userId)) {
+            return res.status(401).json({ error: true, message: 'Invalid token' });
+        }
+        userModel.findById(userId)
+            .then(data => {
+                if (!data) {
+                    return res.status(401).json({ error: true, message: 'User not found' });
+                }
+                req.user = data;
+                next();
+            })
+            .catch(err => {
+                console.error('VerifyToken DB error:', err);
+                return res.status(500).json({ error: true, message: 'Server error' });
+            });
+    });
 }
 
 export default VerifyToken;

@@ -7,7 +7,10 @@ const userSchema = mongoose.Schema({
     },
     email: {
         type: String,
-        required: true
+        required: true,
+        unique: true,
+        lowercase: true,
+        trim: true,
     },
     password: {
         type: String,
@@ -15,7 +18,8 @@ const userSchema = mongoose.Schema({
     },
     avatar: {
         type: String,
-        default: 'https://yt3.ggpht.com/RAnCvom2Cnxn5g5xe1Vz5T4S9167TWv18cz2MTUu1hXv_tNZ-h2b34RoWPQqtAhvwXdgDijE=s108-c-k-c0x00ffffff-no-rj'
+        default: 'https://yt3.ggpht.com/RAnCvom2Cnxn5g5xe1Vz5T4S9167TWv18cz2MTUu1hXv_tNZ-h2b34RoWPQqtAhvwXdgDijE=s108-c-k-c0x00ffffff-no-rj',
+        match: [/^https?:\/\//i, 'Avatar must be a valid http(s) URL'],
     },
     channelId: {
         type : mongoose.Schema.Types.ObjectId,

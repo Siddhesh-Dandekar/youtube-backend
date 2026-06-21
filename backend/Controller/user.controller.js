@@ -1,69 +1,69 @@
 import userModel from "../Model/user.model.js";
-import mongoose from "mongoose";
 import jwt from "jsonwebtoken";
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MIN_PASSWORD_LEN = 8;
+const MAX_PASSWORD_LEN = 128;
 
-//This function is used to register new user in the database
-export function registerUser(req, res) {
-    const { username, email, password } = req.body;
-    console.log(username, email, password);
+export async function registerUser(req, res) {
     try {
-        userModel.findOne({ email: email })
-        .then(data => {
-            const hashedPassword = bcrypt.hashSync(password, 10);
-            if (!data) {
-                const newuser = new userModel({
-                    username,
-                    email,
-                    password : hashedPassword
-                });
-                newuser.save()
-                .then(() => res.status(201).json({ message: "Successfully Registered", error: false }))
-                .catch(err => res.status(500).json({ error: true, message: err.message }));
-            } else {
-                res.status(200).json({
-                    message: "Email already registered",
-                    error: true
-                });
-            }
-        })
-        .catch(err => {
-            res.status(500).json({ error: true, message: err.message });
-        });
+        const username = String(req.body.username || '').trim();
+        const email = String(req.body.email || '').trim().toLowerCase();
+        const password = String(req.body.password || '');
+
+        if (!username || username.length > 60) {
+            return res.status(400).json({ error: true, message: 'Invalid username' });
+        }
+        if (!EMAIL_RE.test(email)) {
+            return res.status(400).json({ error: true, message: 'Invalid email' });
+        }
+        if (password.length < MIN_PASSWORD_LEN || password.length > MAX_PASSWORD_LEN) {
+            return res.status(400).json({ error: true, message: `Password must be ${MIN_PASSWORD_LEN}-${MAX_PASSWORD_LEN} characters` });
+        }
+
+        const existing = await userModel.findOne({ email });
+        if (existing) {
+            return res.status(200).json({ error: true, message: 'Email already registered' });
+        }
+
+        const hashedPassword = await bcrypt.hash(password, 12);
+        await new userModel({ username, email, password: hashedPassword }).save();
+        return res.status(201).json({ error: false, message: 'Successfully Registered' });
     } catch (err) {
-        res.status(500).json({ error: true, message: err.message });
+        console.error('registerUser error:', err);
+        return res.status(500).json({ error: true, message: 'Server error' });
     }
 }
 
-//This function is used to verify user and Authorized him in return of Access Token
-export function loginUser(req, res) {
-    const { email, password } = req.body;
+export async function loginUser(req, res) {
     try {
-        userModel.findOne({ email: email })
-        .then(data => {
-            console.log(data);
-            if (!data) {
-                return res.status(404).json({ error: true, message: 'Create account before login' });
-            }
-            const ValidPassword = bcrypt.compareSync(password, data.password);
-            if (ValidPassword) {
-                const accesstoken = jwt.sign({ email: email }, 'Secretkey', {expiresIn: '2h' });
-                return res.status(200).json({ token: accesstoken });
-            }
-            res.status(400).json({ error: true, message: 'Invalid Password' });
-        })
-        .catch(err => {
-            res.status(500).json({ error: true, message: err.message });
-        });
+        const email = String(req.body.email || '').trim().toLowerCase();
+        const password = String(req.body.password || '');
+
+        if (!email || !password) {
+            return res.status(400).json({ error: true, message: 'Email and password required' });
+        }
+
+        const user = await userModel.findOne({ email });
+        if (!user) {
+            return res.status(401).json({ error: true, message: 'Invalid credentials' });
+        }
+
+        const validPassword = await bcrypt.compare(password, user.password);
+        if (!validPassword) {
+            return res.status(401).json({ error: true, message: 'Invalid credentials' });
+        }
+
+        const accesstoken = jwt.sign({ userId: user._id.toString() }, process.env.JWT_SECRET, { expiresIn: '2h' });
+        return res.status(200).json({ token: accesstoken });
     } catch (err) {
-        
-        res.status(500).json({ error: true, message: err.message });
+        console.error('loginUser error:', err);
+        return res.status(500).json({ error: true, message: 'Server error' });
     }
 }
 
-//This function Fetch logged Used Information
 export function fetchUser(req, res) {
-    return res.status(200).json(req.user)
+    const { password, ...safe } = req.user.toObject ? req.user.toObject() : req.user;
+    return res.status(200).json(safe);
 }
-

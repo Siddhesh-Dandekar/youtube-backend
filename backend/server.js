@@ -1,37 +1,46 @@
+import 'dotenv/config';
 import express from 'express';
 import mongoose from 'mongoose';
+import cors from 'cors';
+import helmet from 'helmet';
 import userroutes from './Routes/user.routes.js';
-import cors from 'cors'
 import ChannelRoutes from './Routes/channel.routes.js';
 import videoRoutes from './Routes/video.routes.js';
 
-//Creating New Server
-const app = new express();
+const requiredEnv = ['MONGO_URI', 'JWT_SECRET'];
+for (const key of requiredEnv) {
+    if (!process.env[key]) {
+        console.error(`Missing required env var: ${key}`);
+        process.exit(1);
+    }
+}
 
-//Establishing Connection between server and Database
-mongoose.connect('mongodb+srv://siddhesh0129:siddhesh@cluster0.ryx5j.mongodb.net/youtube')
+const PORT = process.env.PORT || 5100;
+const corsOrigins = (process.env.CORS_ORIGIN || '').split(',').map(s => s.trim()).filter(Boolean);
 
-//Running Server on Port 5100
-app.listen(5100,() => {
-    console.log("Server running on port 5100")
-})
-app.get('/',(req, res)=>{
-    return res.send('hello')
-})
-//Fetching connection Status
-const db = mongoose.connection;
+const app = express();
 
-//If connection successfull it will be consoled
-db.on('open', ()=> {
-    console.log('Connection successfully established')
-})
+app.set('trust proxy', 1);
 
-//Allowing Cors and parsing the data
-app.use(cors())
-app.use(express.json())
+app.use(helmet());
+app.use(cors({
+    origin: corsOrigins.length ? corsOrigins : false,
+    credentials: true,
+}));
+app.use(express.json({ limit: '100kb' }));
 
+app.get('/', (req, res) => res.send('hello'));
 
-//Passing Routes Request
 userroutes(app);
 ChannelRoutes(app);
 videoRoutes(app);
+
+mongoose.connect(process.env.MONGO_URI)
+    .then(() => {
+        console.log('Connection successfully established');
+        app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+    })
+    .catch(err => {
+        console.error('Database connection failed:', err.message);
+        process.exit(1);
+    });

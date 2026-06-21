@@ -1,4 +1,7 @@
 import mongoose from "mongoose";
+
+const objectId = mongoose.Schema.Types.ObjectId;
+
 //Creating user Schema for storing data in valid Structure
 const userSchema = mongoose.Schema({
     username: {
@@ -22,19 +25,86 @@ const userSchema = mongoose.Schema({
         match: [/^https?:\/\//i, 'Avatar must be a valid http(s) URL'],
     },
     channelId: {
-        type : mongoose.Schema.Types.ObjectId,
+        type : objectId,
         ref : 'channels',
         default : null,
     },
-    likedVideos : {
-        type: Array,
-        default: []
+    likedVideos : [{
+        type: objectId,
+        ref: 'videos'
+    }],
+    dislikedVideos : [{
+        type: objectId,
+        ref: 'videos'
+    }],
+    watchLater: [{
+        type: objectId,
+        ref: 'videos'
+    }],
+    history: [{
+        videoId: {
+            type: objectId,
+            ref: 'videos',
+            required: true
+        },
+        watchedAt: {
+            type: Date,
+            default: Date.now
+        }
+    }],
+    subscribedChannels: [{
+        type: objectId,
+        ref: 'channels'
+    }],
+    notifications: [{
+        type: {
+            type: String,
+            enum: ['subscription', 'video', 'system'],
+            default: 'system'
+        },
+        channelId: {
+            type: objectId,
+            ref: 'channels',
+            default: null
+        },
+        videoId: {
+            type: objectId,
+            ref: 'videos',
+            default: null
+        },
+        message: {
+            type: String,
+            required: true
+        },
+        read: {
+            type: Boolean,
+            default: false
+        },
+        createdAt: {
+            type: Date,
+            default: Date.now
+        }
+    }],
+    emailVerified: {
+        type: Boolean,
+        default: false
     },
-    dislikedVideos : {
-        type: Array,
-        default: []
+    emailVerificationToken: {
+        type: String,
+        default: null
+    },
+    passwordResetToken: {
+        type: String,
+        default: null
+    },
+    passwordResetExpires: {
+        type: Date,
+        default: null
     }
-})
+}, { timestamps: true });
+
+userSchema.index({ emailVerificationToken: 1 }, { sparse: true });
+userSchema.index({ passwordResetToken: 1 }, { sparse: true });
 
 const userModel = mongoose.model('users', userSchema);
 

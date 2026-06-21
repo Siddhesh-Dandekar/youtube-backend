@@ -1,5 +1,7 @@
 import mongoose from 'mongoose';
 
+const objectId = mongoose.Schema.Types.ObjectId;
+
 //Creating Video Schema for storing data in valid Structure
 const videoSchema = mongoose.Schema({
     title: {
@@ -21,12 +23,13 @@ const videoSchema = mongoose.Schema({
         required : true
     },
     channelId : {
-        type: mongoose.Schema.Types.ObjectId, 
+        type: objectId, 
         ref: 'channels', 
         required: true
     },
     userId:{
-        type: String,
+        type: objectId,
+        ref: 'users',
         required: true,
     },
     views:{
@@ -48,7 +51,8 @@ const videoSchema = mongoose.Schema({
     comments:[
         {
             channelId: {
-                type: String,
+                type: objectId,
+                ref: 'channels',
                 required: true
             },
             text: {
@@ -59,10 +63,38 @@ const videoSchema = mongoose.Schema({
                 type: Date,
                 required: true,
                 default: Date.now
-            }
+            },
+            likes: {
+                type: Number,
+                default: 0
+            },
+            dislikes: {
+                type: Number,
+                default: 0
+            },
+            replies: [{
+                channelId: {
+                    type: objectId,
+                    ref: 'channels',
+                    required: true
+                },
+                text: {
+                    type: String,
+                    required: true
+                },
+                timestamp: {
+                    type: Date,
+                    default: Date.now
+                }
+            }]
         }
     ]
-})
+});
+
+videoSchema.index({ title: 'text', description: 'text' });
+videoSchema.index({ uploadDate: -1 });
+videoSchema.index({ views: -1 });
+videoSchema.index({ channelId: 1 });
 
 const videoModel = mongoose.model('videos', videoSchema);
 

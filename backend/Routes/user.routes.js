@@ -1,4 +1,12 @@
-import { registerUser, loginUser, fetchUser } from "../Controller/user.controller.js";
+import {
+    registerUser,
+    loginUser,
+    fetchUser,
+    requestPasswordReset,
+    resetPassword,
+    verifyEmail,
+    resendEmailVerification
+} from "../Controller/user.controller.js";
 import VerifyToken from "../Middleware/verifytoken.js";
 import rateLimit from "express-rate-limit";
 
@@ -22,6 +30,11 @@ function userroutes(app) {
     app.post('/signup', signupLimiter, registerUser);
     app.post('/login', loginLimiter, loginUser);
     app.get('/validuser', VerifyToken, fetchUser);
+    app.post('/password-reset/request', loginLimiter, requestPasswordReset);
+    app.post('/password-reset/confirm', loginLimiter, resetPassword);
+    app.post('/email/verify', verifyEmail);
+    app.get('/email/verify/:token', verifyEmail);
+    app.post('/email/verification', VerifyToken, resendEmailVerification);
 }
 
 export default userroutes;

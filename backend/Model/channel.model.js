@@ -1,5 +1,7 @@
 import mongoose from 'mongoose';
 
+const objectId = mongoose.Schema.Types.ObjectId;
+
 //Creating Channel Schema for storing data in valid Structure
 const channelSchema = mongoose.Schema({
     channelName : {
@@ -8,7 +10,7 @@ const channelSchema = mongoose.Schema({
         unique : true
     },
     userId: {
-        type: mongoose.Schema.Types.ObjectId,
+        type: objectId,
         ref:'users',
         required: true,
         unique : true
@@ -33,10 +35,19 @@ const channelSchema = mongoose.Schema({
         default : 0
     },
     videos: {
-        type : Array,
+        type : [{
+            type: objectId,
+            ref: 'videos'
+        }],
         default : []
-    }
-},{timestamps: true})
+    },
+    subscriberIds: [{
+        type: objectId,
+        ref: 'users'
+    }]
+},{timestamps: true});
+
+channelSchema.index({ channelName: 'text', description: 'text' });
 
 const channelModel = mongoose.model('channels',channelSchema);
 

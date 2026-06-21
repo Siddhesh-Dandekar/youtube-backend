@@ -6,12 +6,16 @@ import helmet from 'helmet';
 import userroutes from './Routes/user.routes.js';
 import ChannelRoutes from './Routes/channel.routes.js';
 import videoRoutes from './Routes/video.routes.js';
+import libraryRoutes from './Routes/library.routes.js';
+import logger from './utils/logger.js';
 
 const requiredEnv = ['MONGO_URI', 'JWT_SECRET'];
-for (const key of requiredEnv) {
-    if (!process.env[key]) {
-        console.error(`Missing required env var: ${key}`);
-        process.exit(1);
+if (process.env.NODE_ENV !== 'test') {
+    for (const key of requiredEnv) {
+        if (!process.env[key]) {
+            logger.error(`Missing required env var: ${key}`);
+            process.exit(1);
+        }
     }
 }
 
@@ -29,18 +33,39 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '100kb' }));
 
-app.get('/', (req, res) => res.send('hello'));
+app.get('/', (req, res) => res.json({ name: 'youtube-clone-api', status: 'ok' }));
+app.get('/health', (req, res) => {
+    const dbState = mongoose.connection.readyState;
+    res.status(dbState === 1 ? 200 : 503).json({
+        status: dbState === 1 ? 'ok' : 'degraded',
+        database: ['disconnected', 'connected', 'connecting', 'disconnecting'][dbState] || 'unknown',
+        uptime: process.uptime()
+    });
+});
 
 userroutes(app);
 ChannelRoutes(app);
 videoRoutes(app);
+libraryRoutes(app);
 
-mongoose.connect(process.env.MONGO_URI)
-    .then(() => {
-        console.log('Connection successfully established');
-        app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
-    })
-    .catch(err => {
-        console.error('Database connection failed:', err.message);
+export async function connectDatabase(uri = process.env.MONGO_URI) {
+    if (mongoose.connection.readyState === 1) return mongoose.connection;
+    return mongoose.connect(uri);
+}
+
+export async function startServer() {
+    try {
+        await connectDatabase();
+        logger.info('Connection successfully established');
+        return app.listen(PORT, () => logger.info(`Server running on port ${PORT}`));
+    } catch (err) {
+        logger.error('Database connection failed', err);
         process.exit(1);
-    });
+    }
+}
+
+if (process.env.NODE_ENV !== 'test') {
+    startServer();
+}
+
+export default app;

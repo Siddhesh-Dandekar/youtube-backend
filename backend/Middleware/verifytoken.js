@@ -1,6 +1,7 @@
 import userModel from "../Model/user.model.js";
 import mongoose from "mongoose";
 import jwt from 'jsonwebtoken';
+import logger from '../utils/logger.js';
 
 function VerifyToken(req, res, next) {
     const authHeader = req.headers.authorization;
@@ -28,7 +29,7 @@ function VerifyToken(req, res, next) {
                 next();
             })
             .catch(err => {
-                console.error('VerifyToken DB error:', err);
+                logger.error('VerifyToken DB error', err);
                 return res.status(500).json({ error: true, message: 'Server error' });
             });
     });

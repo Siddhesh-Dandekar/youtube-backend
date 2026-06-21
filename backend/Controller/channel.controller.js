@@ -74,7 +74,7 @@ export async function fetchChannelVideos(req, res) {
         const videos = await videoModel
             .find({ channelId })
             .sort({ uploadDate: -1 })
-            .populate('channelId', 'channelName channelProfile subscribers subscriberIds')
+            .populate('channelId', 'channelName channelProfile subscribers subscriberIds verified')
             .lean();
         return res.status(200).json(videos.map(serializeChannelVideo));
     } catch (err) {
@@ -92,6 +92,7 @@ function serializeChannelVideo(video) {
             channelName: channel.channelName,
             channelProfile: channel.channelProfile,
             subscribers: channel.subscriberIds?.length ?? channel.subscribers ?? 0,
+            verified: !!channel.verified,
         } : null
     };
 }

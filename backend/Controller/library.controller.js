@@ -14,7 +14,7 @@ const serverError = (res, label, err) => {
 
 const videoPopulate = {
     path: 'channelId',
-    select: 'channelName channelProfile subscribers subscriberIds'
+    select: 'channelName channelProfile subscribers subscriberIds verified'
 };
 
 const serializeVideo = (video) => {
@@ -29,6 +29,7 @@ const serializeVideo = (video) => {
             channelName: channel.channelName,
             channelProfile: channel.channelProfile,
             subscribers: channel.subscriberIds?.length ?? channel.subscribers ?? 0,
+            verified: !!channel.verified,
         } : null,
         commentCount: obj.comments?.length || 0,
     };
@@ -66,6 +67,28 @@ export async function getLibrary(req, res) {
         });
     } catch (err) {
         return serverError(res, 'getLibrary', err);
+    }
+}
+
+export async function getSubscriptionFeed(req, res) {
+    try {
+        const user = await userModel.findById(req.user._id).select('subscribedChannels');
+        if (!user) {
+            return res.status(401).json({ error: true, message: 'User not found' });
+        }
+        if (!user.subscribedChannels.length) {
+            return res.status(200).json({ items: [] });
+        }
+        const limit = Math.min(50, Math.max(1, Number.parseInt(req.query.limit || '24', 10) || 24));
+        const videos = await videoModel
+            .find({ channelId: { $in: user.subscribedChannels } })
+            .sort({ uploadDate: -1 })
+            .limit(limit)
+            .populate(videoPopulate)
+            .lean();
+        return res.status(200).json({ items: videos.map(serializeVideo).filter(Boolean) });
+    } catch (err) {
+        return serverError(res, 'getSubscriptionFeed', err);
     }
 }
 

@@ -44,7 +44,11 @@ const channelSchema = mongoose.Schema({
     subscriberIds: [{
         type: objectId,
         ref: 'users'
-    }]
+    }],
+    verified: {
+        type: Boolean,
+        default: false
+    }
 },{timestamps: true});
 
 channelSchema.index({ channelName: 'text', description: 'text' });

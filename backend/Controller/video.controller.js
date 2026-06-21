@@ -32,6 +32,7 @@ const serializeVideo = (video) => {
             channelName: channel.channelName,
             channelProfile: channel.channelProfile,
             subscribers: channel.subscriberIds?.length ?? channel.subscribers ?? 0,
+            verified: !!channel.verified,
         } : obj.channel || null,
         commentCount: obj.comments?.length || 0,
     };
@@ -64,6 +65,7 @@ export async function uploadvideo(req, res) {
         const thumbnailUrl = String(req.body.thumbnailUrl || '').trim();
         const videoUrl = String(req.body.videoUrl || '').trim();
         const description = String(req.body.description || '').trim();
+        const duration = Math.max(0, Number(req.body.duration) || 0);
         const { _id } = req.user;
 
         if (!title || !thumbnailUrl || !videoUrl || !description) {
@@ -81,6 +83,7 @@ export async function uploadvideo(req, res) {
             videoUrl,
             userId: _id,
             description,
+            duration,
             channelId: UserDetails.channelId,
         });
 
@@ -117,7 +120,7 @@ export async function fetchVideos(req, res) {
                 .sort(sort)
                 .skip(skip)
                 .limit(limit)
-                .populate('channelId', 'channelName channelProfile subscribers subscriberIds')
+                .populate('channelId', 'channelName channelProfile subscribers subscriberIds verified')
                 .lean(),
             videoModel.countDocuments(filter)
         ]);
@@ -153,7 +156,7 @@ export async function fetchRecommendations(req, res) {
         const videos = await videoModel.find(filter)
             .sort({ views: -1, likes: -1, uploadDate: -1 })
             .limit(limit)
-            .populate('channelId', 'channelName channelProfile subscribers subscriberIds')
+            .populate('channelId', 'channelName channelProfile subscribers subscriberIds verified')
             .lean();
         return res.status(200).json({ items: videos.map(serializeVideo) });
     } catch (err) {
@@ -168,7 +171,7 @@ export async function fetchVideoById(req, res) {
     }
     try {
         const videoData = await videoModel.findById(id)
-            .populate('channelId', 'channelName channelProfile subscribers subscriberIds')
+            .populate('channelId', 'channelName channelProfile subscribers subscriberIds verified')
             .populate('comments.channelId', 'channelName channelProfile')
             .populate('comments.replies.channelId', 'channelName channelProfile')
             .lean();
@@ -452,6 +455,10 @@ export async function EditVideo(req, res) {
         if (typeof req.body.title === 'string') VideoInfo.title = req.body.title.trim();
         if (typeof req.body.thumbnailUrl === 'string') VideoInfo.thumbnailUrl = req.body.thumbnailUrl.trim();
         if (typeof req.body.description === 'string') VideoInfo.description = req.body.description.trim();
+        if (req.body.duration !== undefined) {
+            const next = Math.max(0, Number(req.body.duration) || 0);
+            VideoInfo.duration = next;
+        }
         await VideoInfo.save();
         return res.status(200).json(serializeVideo(VideoInfo));
     } catch (err) {

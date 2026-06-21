@@ -46,7 +46,12 @@ const videoSchema = mongoose.Schema({
     },
     uploadDate:{
         type : Date,
-        default : Date.now   
+        default : Date.now
+    },
+    duration: {
+        type: Number,
+        default: 0,
+        min: 0
     },
     comments:[
         {

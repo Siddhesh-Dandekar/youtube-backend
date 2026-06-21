@@ -1,6 +1,7 @@
 import VerifyToken from "../Middleware/verifytoken.js";
 import {
     getLibrary,
+    getSubscriptionFeed,
     addHistory,
     clearHistory,
     toggleWatchLater,
@@ -15,6 +16,7 @@ import {
 
 function libraryRoutes(app) {
     app.get('/library', VerifyToken, getLibrary);
+    app.get('/subscriptions/feed', VerifyToken, getSubscriptionFeed);
     app.post('/history/:videoid', VerifyToken, addHistory);
     app.delete('/history', VerifyToken, clearHistory);
     app.post('/watch-later/:videoid', VerifyToken, toggleWatchLater);
